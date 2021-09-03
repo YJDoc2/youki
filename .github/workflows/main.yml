@@ -7,12 +7,27 @@ on:
       - main
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      # Expose matched filters as job 'packages' output variable
+      dirs: ${{ steps.filter.outputs.changes }}
+    steps:
+    # For pull requests it's not necessary to checkout the code
+    - uses: dorny/paths-filter@v2
+      id: filter
+      with:
+        filters: |
+          youki: src
+          test_framework: test_framework
+          youki_integration_test: youki_integration_test
   check:
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust: [stable]
-        dirs: [.,./test_framework,./youki_integration_test]
+        dirs:  ${{ fromJSON(needs.changes.outputs.dirs) }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions/cache@v2
