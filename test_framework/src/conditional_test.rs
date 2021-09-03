@@ -1,3 +1,4 @@
+use super::ConditionalTest;
 ///! Contains definition for a tests which should be conditionally run
 use crate::testable::{TestResult, Testable};
 
