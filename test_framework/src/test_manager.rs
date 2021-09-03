@@ -1,4 +1,3 @@
-use super::ConditionalTest;
 ///! This exposes the main control wrapper to control the tests
 use crate::testable::{TestResult, TestableGroup};
 use std::collections::BTreeMap;
