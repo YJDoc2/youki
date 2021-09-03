@@ -18,9 +18,9 @@ jobs:
       id: filter
       with:
         filters: |
-          .: src
-          ./test_framework: test_framework
-          ./youki_integration_test: youki_integration_test
+          .: 'src/*'
+          ./test_framework: test_framework/*
+          ./youki_integration_test: youki_integration_test/*
   check:
     needs: changes
     runs-on: ubuntu-latest
