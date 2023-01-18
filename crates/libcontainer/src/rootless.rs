@@ -1,5 +1,7 @@
 use crate::error::MissingSpecError;
-use crate::namespaces::{NamespaceError, Namespaces};
+use crate::namespaces::{NamespaceError, Namespaces,utils};
+use anyhow::{bail, Context, Result};
+use libcgroups::common::rootless_required;
 use nix::unistd::Pid;
 use oci_spec::runtime::{Linux, LinuxIdMapping, LinuxNamespace, LinuxNamespaceType, Mount, Spec};
 use std::fs;
@@ -232,7 +234,34 @@ pub fn rootless_required() -> bool {
         return true;
     }
 
+    let uid_map_path = "/proc/self/uid_map";
+    let content = fs::read_to_string(uid_map_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
+    if !content.contains("4294967295") {
+        return true;
+    }
+
     matches!(std::env::var("YOUKI_USE_ROOTLESS").as_deref(), Ok("true"))
+}
+
+#[cfg(not(test))]
+fn get_uid_path(pid: &Pid) -> PathBuf {
+    PathBuf::from(format!("/proc/{pid}/uid_map"))
+}
+
+#[cfg(test)]
+pub fn get_uid_path(pid: &Pid) -> PathBuf {
+    utils::get_temp_dir_path(format!("{pid}_mapping_path").as_str()).join("uid_map")
+}
+
+#[cfg(not(test))]
+fn get_gid_path(pid: &Pid) -> PathBuf {
+    PathBuf::from(format!("/proc/{pid}/gid_map"))
+}
+
+#[cfg(test)]
+pub fn get_gid_path(pid: &Pid) -> PathBuf {
+    utils::get_temp_dir_path(format!("{pid}_mapping_path").as_str()).join("gid_map")
 }
 
 pub fn unprivileged_user_ns_enabled() -> Result<bool> {

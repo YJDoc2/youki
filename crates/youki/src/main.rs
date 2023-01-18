@@ -12,6 +12,10 @@ use clap::CommandFactory;
 use clap::{crate_version, Parser};
 
 use crate::commands::info;
+use libcgroups::common::rootless_required;
+use libcontainer::utils::create_dir_all_with_mode;
+use nix::sys::stat::Mode;
+use nix::unistd::getuid;
 
 use liboci_cli::{CommonCmd, GlobalOpts, StandardCmd};
 
