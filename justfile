@@ -3,6 +3,8 @@ alias youki := youki-dev
 
 KIND_CLUSTER_NAME := 'youki'
 
+cwd := justfile_directory()
+
 # build
 
 # build all binaries
@@ -10,19 +12,19 @@ build-all: youki-release rust-oci-tests-bin runtimetest
 
 # build youki in dev mode
 youki-dev:
-    {{ justfile_directory() }}/scripts/build.sh -o {{ justfile_directory() }} -c youki
+    {{ cwd }}/scripts/build.sh -o {{ cwd }} -c youki
 
 # build youki in release mode
 youki-release:
-    {{ justfile_directory() }}/scripts/build.sh -o . -r -c youki
+    {{ cwd }}/scripts/build.sh -o {{ cwd }} -r -c youki
 
 # build runtimetest binary
 runtimetest:
-    {{ justfile_directory() }}/scripts/build.sh -o . -r -c runtimetest
+    {{ cwd }}/scripts/build.sh -o {{ cwd }} -r -c runtimetest
 
 # build rust oci tests binary
 rust-oci-tests-bin:
-    {{ justfile_directory() }}/scripts/build.sh -o {{ justfile_directory() }} -r -c integration-test
+    {{ cwd }}/scripts/build.sh -o {{ cwd }} -r -c integration-test
 
 # Tests
 
@@ -30,28 +32,32 @@ rust-oci-tests-bin:
 test-oci: oci-tests rust-oci-tests
 
 # run all tests except rust-oci 
-test-all: unittest featuretest oci-tests containerd-test # currently not doing rust-oci here
+test-all: unittest test-features oci-tests containerd-test # currently not doing rust-oci here
 
 # run cargo unittests
 unittest:
     cd ./crates
     LD_LIBRARY_PATH=${HOME}/.wasmedge/lib cargo test --all --all-targets --all-features
 
-# run purmutated feature compilation tests
-featuretest:
-    ./scripts/features_test.sh
+# run permutated feature compilation tests
+test-features:
+    {{ cwd }}/scripts/features_test.sh
+
+# run test against musl target
+test-musl:
+    {{ cwd }}/scripts/musl_test.sh
 
 # run oci integration tests
 oci-tests: 
-    ./scripts/oci_integration_tests.sh {{ justfile_directory() }}
+    {{ cwd }}/scripts/oci_integration_tests.sh {{ cwd }}
 
 # run rust oci integration tests
 rust-oci-tests: youki-release runtimetest rust-oci-tests-bin
-    ./scripts/rust_integration_tests.sh ./youki
+    {{ cwd }}/scripts/rust_integration_tests.sh {{ cwd }}/youki
 
 # validate rust oci integration tests on runc
 validate-rust-oci-runc: runtimetest rust-oci-tests-bin
-    ./scripts/rust_integration_tests.sh runc
+    {{ cwd }}/scripts/rust_integration_tests.sh runc
 
 # run containerd integration tests
 containerd-test: youki-dev
@@ -61,7 +67,7 @@ containerd-test: youki-dev
 [private]
 kind-cluster: bin-kind
     #!/usr/bin/env bash
-    set -euxo pipefail
+    set -euo pipefail
 
     mkdir -p tests/k8s/_out/
     docker buildx build -f tests/k8s/Dockerfile --iidfile=tests/k8s/_out/img --load .
@@ -108,7 +114,7 @@ format:
 
 # cleans up generated artifacts
 clean:
-    ./scripts/clean.sh .
+    {{ cwd }}/scripts/clean.sh {{ cwd }}
 
 # install tools used in dev
 dev-prepare:
@@ -135,6 +141,26 @@ ci-prepare:
                 libclang-dev \
                 libssl-dev \
                 criu
+            exit 0
+        fi
+    fi
+
+    echo "Unknown system. The CI is only configured for Ubuntu. You will need to forge your own path. Good luck!"
+    exit 1
+
+ci-musl-prepare: ci-prepare
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if system is Ubuntu
+    if [[ -f /etc/lsb-release ]]; then
+        source /etc/lsb-release
+        if [[ $DISTRIB_ID == "Ubuntu" ]]; then
+            echo "System is Ubuntu"
+            apt-get -y update
+            apt-get install -y \
+                musl-dev \
+                musl-tools
             exit 0
         fi
     fi
