@@ -1,6 +1,7 @@
 use crate::systemd::dbus::systemd_api::OrgFreedesktopSystemd1Manager;
 use dbus::arg::{RefArg, Variant};
 use dbus::blocking::{Connection, Proxy};
+use dbus::channel::Channel;
 use std::collections::HashMap;
 use std::num::ParseIntError;
 use std::path::PathBuf;
@@ -67,6 +68,20 @@ impl Client {
     /// Uses the session bus to communicate with systemd
     pub fn new_session() -> Result<Self, dbus::Error> {
         let conn = Connection::new_session()?;
+        Ok(Client {
+            conn,
+            system: false,
+        })
+    }
+
+    pub fn new_session_with_uid(uid: u32) -> Result<Self, dbus::Error> {
+        let current_uid = nix::unistd::geteuid();
+        // let mut channel = Channel::open_private("unix:path=/run/user/1000/bus").unwrap();
+        nix::unistd::seteuid(uid.into()).unwrap();
+        let conn = Connection::new_session().unwrap();
+        nix::unistd::seteuid(current_uid).unwrap();
+        
+        // let conn: dbus::blocking::Connection = channel.into();
         Ok(Client {
             conn,
             system: false,

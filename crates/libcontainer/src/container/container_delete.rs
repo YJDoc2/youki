@@ -4,7 +4,23 @@ use crate::process::intel_rdt::delete_resctrl_subdirectory;
 use crate::{config::YoukiConfig, error::LibcontainerError};
 use libcgroups::{self, common::CgroupManager};
 use nix::sys::signal;
-use std::fs;
+use std::num::ParseIntError;
+
+fn get_owner_uid() -> Result<u32, ParseIntError> {
+    let output = std::process::Command::new("busctl")
+        .arg("--user")
+        .arg("--no-pager")
+        .arg("status")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let found = stdout.lines().find(|s| s.starts_with("OwnerUID=")).unwrap();
+    found.trim_start_matches("OwnerUID=").parse::<u32>()
+}
 
 impl Container {
     /// Deletes the container
@@ -29,7 +45,6 @@ impl Container {
     /// ```
     pub fn delete(&mut self, force: bool) -> Result<(), LibcontainerError> {
         self.refresh_status()?;
-
         tracing::debug!("container status: {:?}", self.status());
 
         // Check if container is allowed to be deleted based on container status.
@@ -111,11 +126,12 @@ impl Container {
             }
 
             // remove the directory storing container state
-            tracing::debug!("remove dir {:?}", self.root);
-            fs::remove_dir_all(&self.root).map_err(|err| {
-                tracing::error!(?err, path = ?self.root, "failed to remove container dir");
-                LibcontainerError::OtherIO(err)
-            })?;
+            // tracing::debug!("remove dir {:?}", self.root);
+            // TODO add check for rootless?
+            // let _ = fs::remove_dir_all(&self.root).map_err(|err| {
+            //     tracing::error!(?err, path = ?self.root, "failed to remove container dir");
+            //     LibcontainerError::OtherIO(err)
+            // });
         }
 
         Ok(())

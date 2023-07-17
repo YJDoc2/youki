@@ -44,6 +44,7 @@ pub fn run(args: Run, root_path: PathBuf, systemd_cgroup: bool) -> Result<i32> {
     );
     let foreground_result = handle_foreground(container.pid().unwrap());
     // execute the destruction action after the container finishes running
+    tracing::warn!("HERE2");
     container.delete(true)?;
     // return result
     foreground_result

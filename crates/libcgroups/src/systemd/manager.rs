@@ -182,10 +182,9 @@ impl Manager {
     ) -> Result<Self, SystemdManagerError> {
         let mut destructured_path = cgroups_path.as_path().try_into()?;
         ensure_parent_unit(&mut destructured_path, use_system);
-
         let client = match use_system {
             true => Client::new_system()?,
-            false => Client::new_session()?,
+            false => Client::new_session_with_uid(1000)?,
         };
 
         let (cgroups_path, delegation_boundary) =

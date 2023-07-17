@@ -75,6 +75,7 @@ pub enum V2ManagerError {
     IoStats(#[from] V2IoStatsError),
 }
 
+#[derive(Debug)]
 pub struct Manager {
     root_path: PathBuf,
     cgroup_path: PathBuf,
