@@ -1,5 +1,5 @@
-use dbus::arg::RefArg;
 use std::{collections::HashMap, num::ParseIntError};
+use zbus::zvariant::Value;
 
 use super::{
     controller::Controller,
@@ -41,7 +41,7 @@ impl Controller for Unified {
     fn apply(
         options: &ControllerOpt,
         systemd_version: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), Self::Error> {
         if let Some(unified) = options.resources.unified() {
             tracing::debug!("applying unified resource restrictions");
@@ -56,7 +56,7 @@ impl Unified {
     fn apply(
         unified: &HashMap<String, String>,
         systemd_version: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), SystemdUnifiedError> {
         for (key, value) in unified {
             match key.as_str() {
@@ -68,7 +68,10 @@ impl Unified {
                                 err,
                                 value: value.into(),
                             })?;
-                    properties.insert(cpu::CPU_WEIGHT, Box::new(convert_shares_to_cgroup2(shares)));
+                    properties.insert(
+                        cpu::CPU_WEIGHT,
+                        Value::U64(convert_shares_to_cgroup2(shares)),
+                    );
                 }
                 "cpu.max" => {
                     let parts: Vec<&str> = value.split_whitespace().collect();
@@ -83,7 +86,7 @@ impl Unified {
                                 err,
                                 value: parts[0].into(),
                             })?;
-                    properties.insert(cpu::CPU_QUOTA, Box::new(quota));
+                    properties.insert(cpu::CPU_QUOTA, Value::U64(quota));
 
                     if parts.len() == 2 {
                         let period = parts[1].parse::<u64>().map_err(|err| {
@@ -92,7 +95,7 @@ impl Unified {
                                 value: parts[1].into(),
                             }
                         })?;
-                        properties.insert(cpu::CPU_PERIOD, Box::new(period));
+                        properties.insert(cpu::CPU_PERIOD, Value::U64(period));
                     }
                 }
                 cpuset @ ("cpuset.cpus" | "cpuset.mems") => {
@@ -108,7 +111,10 @@ impl Unified {
                         file_name => unreachable!("{} was not matched", file_name),
                     };
 
-                    properties.insert(systemd_cpuset, Box::new(bitmask));
+                    properties.insert(
+                        systemd_cpuset,
+                        Value::Array(zbus::zvariant::Array::from(bitmask)),
+                    );
                 }
                 memory @ ("memory.min" | "memory.low" | "memory.high" | "memory.max") => {
                     let value =
@@ -126,7 +132,7 @@ impl Unified {
                         "memory.max" => memory::MEMORY_MAX,
                         file_name => unreachable!("{} was not matched", file_name),
                     };
-                    properties.insert(systemd_memory, Box::new(value));
+                    properties.insert(systemd_memory, Value::U64(value));
                 }
                 "pids.max" => {
                     let pids = value.trim().parse::<i64>().map_err(|err| {
@@ -135,7 +141,7 @@ impl Unified {
                             value: value.into(),
                         }
                     })?;
-                    properties.insert(pids::TASKS_MAX, Box::new(pids as u64));
+                    properties.insert(pids::TASKS_MAX, Value::U64(pids as u64));
                 }
 
                 unknown => tracing::warn!("could not apply {}. Unknown property.", unknown),
@@ -149,7 +155,7 @@ impl Unified {
 #[cfg(test)]
 mod tests {
     use anyhow::{bail, Context, Result};
-    use dbus::arg::ArgType;
+    use zbus::zvariant::Value;
 
     use super::*;
 
@@ -170,32 +176,43 @@ mod tests {
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
         .collect();
 
-        let mut expected: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
-        expected.insert(cpu::CPU_WEIGHT, Box::new(840u64));
-        expected.insert(cpuset::ALLOWED_CPUS, Box::new(vec![15u64]));
-        expected.insert(cpuset::ALLOWED_NODES, Box::new(vec![15u64]));
-        expected.insert(memory::MEMORY_MIN, Box::new(100000u64));
-        expected.insert(memory::MEMORY_LOW, Box::new(200000u64));
-        expected.insert(memory::MEMORY_HIGH, Box::new(300000u64));
-        expected.insert(memory::MEMORY_MAX, Box::new(400000u64));
-        expected.insert(pids::TASKS_MAX, Box::new(100u64));
+        let mut expected: HashMap<&str, Value> = HashMap::new();
+        expected.insert(cpu::CPU_WEIGHT, Value::U64(840u64));
+        expected.insert(
+            cpuset::ALLOWED_CPUS,
+            Value::Array(zbus::zvariant::Array::from(vec![15u8])),
+        );
+        expected.insert(
+            cpuset::ALLOWED_NODES,
+            Value::Array(zbus::zvariant::Array::from(vec![15u8])),
+        );
+        expected.insert(memory::MEMORY_MIN, Value::U64(100000u64));
+        expected.insert(memory::MEMORY_LOW, Value::U64(200000u64));
+        expected.insert(memory::MEMORY_HIGH, Value::U64(300000u64));
+        expected.insert(memory::MEMORY_MAX, Value::U64(400000u64));
+        expected.insert(pids::TASKS_MAX, Value::U64(100u64));
 
         // act
-        let mut actual: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut actual: HashMap<&str, Value> = HashMap::new();
         Unified::apply(&unified, 245, &mut actual).context("apply unified")?;
 
         // assert
         for (setting, value) in expected {
             assert!(actual.contains_key(setting));
-            assert_eq!(value.arg_type(), actual[setting].arg_type(), "{setting}");
-            match value.arg_type() {
-                ArgType::UInt64 => {
-                    assert_eq!(value.as_u64(), actual[setting].as_u64(), "{setting}")
+            match (value, &actual[setting]) {
+                (Value::U64(expected), Value::U64(actual)) => {
+                    assert_eq!(expected, *actual, "{setting}")
                 }
-                ArgType::Array => assert_eq!(
-                    value.as_iter().unwrap().next().unwrap().as_u64(),
-                    actual[setting].as_iter().unwrap().next().unwrap().as_u64()
-                ),
+                (Value::Array(expected), Value::Array(actual)) => {
+                    let _expected = expected.iter().next().unwrap();
+                    let _actual = actual.iter().next().unwrap();
+                    match (_expected, _actual) {
+                        (Value::U8(__expected), Value::U8(__actual)) => {
+                            assert_eq!(__expected, __actual)
+                        }
+                        arg_type => bail!("unexpected arg type here {:?}", arg_type),
+                    }
+                }
                 arg_type => bail!("unexpected arg type {:?}", arg_type),
             }
         }
@@ -210,7 +227,7 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .collect();
-        let mut actual: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut actual: HashMap<&str, Value> = HashMap::new();
 
         // act
         Unified::apply(&unified, 245, &mut actual).context("apply unified")?;
@@ -219,11 +236,8 @@ mod tests {
         assert!(actual.contains_key(cpu::CPU_PERIOD));
         assert!(actual.contains_key(cpu::CPU_QUOTA));
 
-        assert_eq!(actual[cpu::CPU_PERIOD].arg_type(), ArgType::UInt64);
-        assert_eq!(actual[cpu::CPU_QUOTA].arg_type(), ArgType::UInt64);
-
-        assert_eq!(actual[cpu::CPU_PERIOD].as_u64().unwrap(), 250000);
-        assert_eq!(actual[cpu::CPU_QUOTA].as_u64().unwrap(), 500000);
+        assert!(matches!(actual[cpu::CPU_PERIOD], Value::U64(250000)));
+        assert!(matches!(actual[cpu::CPU_QUOTA], Value::U64(500000)));
 
         Ok(())
     }
@@ -235,7 +249,7 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .collect();
-        let mut actual: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut actual: HashMap<&str, Value> = HashMap::new();
 
         // act
         Unified::apply(&unified, 245, &mut actual).context("apply unified")?;
@@ -244,8 +258,7 @@ mod tests {
         assert!(!actual.contains_key(cpu::CPU_PERIOD));
         assert!(actual.contains_key(cpu::CPU_QUOTA));
 
-        assert_eq!(actual[cpu::CPU_QUOTA].arg_type(), ArgType::UInt64);
-        assert_eq!(actual[cpu::CPU_QUOTA].as_u64().unwrap(), 500000);
+        assert!(matches!(actual[cpu::CPU_QUOTA], Value::U64(500000)));
 
         Ok(())
     }

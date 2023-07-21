@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use dbus::arg::RefArg;
 use fixedbitset::FixedBitSet;
 use oci_spec::runtime::LinuxCpu;
+use zbus::zvariant::Value;
 
 use crate::common::ControllerOpt;
 
@@ -29,7 +29,7 @@ impl Controller for CpuSet {
     fn apply(
         options: &ControllerOpt,
         systemd_version: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), Self::Error> {
         if let Some(cpu) = options.resources.cpu() {
             tracing::debug!("Applying cpuset resource restrictions");
@@ -44,7 +44,7 @@ impl CpuSet {
     fn apply(
         cpu: &LinuxCpu,
         systemd_version: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), SystemdCpuSetError> {
         if systemd_version <= 243 {
             return Err(SystemdCpuSetError::OldSystemd);
@@ -52,12 +52,18 @@ impl CpuSet {
 
         if let Some(cpus) = cpu.cpus() {
             let cpu_mask = to_bitmask(cpus).map_err(SystemdCpuSetError::CpusBitmask)?;
-            properties.insert(ALLOWED_CPUS, Box::new(cpu_mask));
+            properties.insert(
+                ALLOWED_CPUS,
+                Value::Array(zbus::zvariant::Array::from(cpu_mask)),
+            );
         }
 
         if let Some(mems) = cpu.mems() {
             let mems_mask = to_bitmask(mems).map_err(SystemdCpuSetError::MemoryNodesBitmask)?;
-            properties.insert(ALLOWED_NODES, Box::new(mems_mask));
+            properties.insert(
+                ALLOWED_NODES,
+                Value::Array(zbus::zvariant::Array::from(mems_mask)),
+            );
         }
 
         Ok(())
@@ -128,8 +134,8 @@ pub fn to_bitmask(range: &str) -> Result<Vec<u8>, BitmaskError> {
 #[cfg(test)]
 mod tests {
     use anyhow::{Context, Result};
-    use dbus::arg::{ArgType, RefArg};
     use oci_spec::runtime::LinuxCpuBuilder;
+    use zbus::zvariant::Value;
 
     use super::*;
 
@@ -217,7 +223,7 @@ mod tests {
         let cpu = LinuxCpuBuilder::default()
             .build()
             .context("build cpu spec")?;
-        let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut properties: HashMap<&str, Value> = HashMap::new();
 
         let result = CpuSet::apply(&cpu, systemd_version, &mut properties);
 
@@ -233,18 +239,18 @@ mod tests {
             .mems("0-3")
             .build()
             .context("build cpu spec")?;
-        let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut properties: HashMap<&str, Value> = HashMap::new();
 
         CpuSet::apply(&cpu, systemd_version, &mut properties).context("apply cpuset")?;
 
         assert_eq!(properties.len(), 2);
         assert!(properties.contains_key(ALLOWED_CPUS));
         let cpus = properties.get(ALLOWED_CPUS).unwrap();
-        assert_eq!(cpus.arg_type(), ArgType::Array);
+        assert!(matches!(cpus, Value::Array(_)));
 
         assert!(properties.contains_key(ALLOWED_NODES));
         let mems = properties.get(ALLOWED_NODES).unwrap();
-        assert_eq!(mems.arg_type(), ArgType::Array);
+        assert!(matches!(mems, Value::Array(_)));
 
         Ok(())
     }
