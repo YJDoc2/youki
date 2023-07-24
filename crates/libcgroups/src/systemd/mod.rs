@@ -4,11 +4,11 @@ mod controller;
 pub mod controller_type;
 mod cpu;
 mod cpuset;
-mod zbus;
 pub mod manager;
 mod memory;
 mod pids;
 mod unified;
+mod zbus;
 
 /// Checks if the system was booted with systemd
 pub fn booted() -> bool {

@@ -91,8 +91,8 @@ impl SystemdClient for Client {
                 Some("org.freedesktop.systemd1"),
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.systemd1.Manager"),
-                "Get",
-                &(unit_name,),
+                "GetUnit",
+                &(unit_name.to_string(),),
             )
             .is_ok()
         // proxy.get_unit(unit_name).is_ok()
@@ -158,7 +158,12 @@ impl SystemdClient for Client {
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.systemd1.Manager"),
                 "StartTransientUnit",
-                &(unit_name, "replace", properties, aux),
+                &(
+                    unit_name.to_string(),
+                    "replace".to_string(),
+                    properties,
+                    aux,
+                ),
             )
             .map_err(|err| SystemdClientError::FailedTransient {
                 err,
@@ -176,7 +181,7 @@ impl SystemdClient for Client {
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.systemd1.Manager"),
                 "StopUnit",
-                &(unit_name, "replace"),
+                &(unit_name.to_string(), "replace".to_string()),
             )
             .map_err(|err| SystemdClientError::FailedStop {
                 err,
@@ -197,12 +202,12 @@ impl SystemdClient for Client {
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.systemd1.Manager"),
                 "SetUnitProperties",
-                &(unit_name, true, properties.clone()),
+                &(unit_name.to_string(), true, properties.clone()),
             )
             .map_err(|err| SystemdClientError::FailedProperties {
                 err,
                 unit_name: unit_name.into(),
-            })?;
+            });
 
         Ok(())
     }
@@ -215,11 +220,18 @@ impl SystemdClient for Client {
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.DBus.Properties"),
                 "Get",
-                &("org.freedesktop.systemd1.Manager", "Version"),
+                &(
+                    "org.freedesktop.systemd1.Manager".to_string(),
+                    "Version".to_string(),
+                ),
             )
             .and_then(|res| {
-                let body: ((String,),) = res.body()?;
-                Ok((body.0).0)
+                let body: Value = res.body().unwrap();
+                if let Value::Str(s) = body {
+                    Ok(s.to_string())
+                } else {
+                    Err(zbus::Error::InvalidReply)
+                }
             })?;
 
         let version = version
@@ -235,20 +247,29 @@ impl SystemdClient for Client {
 
     fn control_cgroup_root(&self) -> Result<PathBuf, SystemdClientError> {
         // let proxy = self.create_proxy();
-        let cgroup_root = self
+        let cgroup_root: String = self
             .conn
             .call_method(
                 Some("org.freedesktop.systemd1"),
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.DBus.Properties"),
                 "Get",
-                &("org.freedesktop.systemd1.Manager", "ControlGroup"),
+                &(
+                    "org.freedesktop.systemd1.Manager".to_string(),
+                    "ControlGroup".to_string(),
+                ),
             )
             .and_then(|res| {
-                let body: ((String,),) = res.body()?;
-                Ok((body.0).0)
+                let body: Value = res.body().unwrap();
+                if let Value::Str(s) = body {
+                    Ok(s.to_string())
+                } else {
+                    Err(zbus::Error::InvalidReply)
+                }
+                // Ok(body.0.0)
             })?;
         // let cgroup_root = proxy.control_group()?;
         Ok(PathBuf::from(&cgroup_root))
+        // Ok(PathBuf::from(""))
     }
 }

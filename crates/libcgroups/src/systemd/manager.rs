@@ -6,18 +6,18 @@ use std::{
     path::Component::RootDir,
 };
 
-use zbus::zvariant::Value;
 use nix::{unistd::Pid, NixPath};
 use std::path::{Path, PathBuf};
+use zbus::zvariant::Value;
 
 use super::{
     controller::Controller,
     controller_type::{ControllerType, CONTROLLER_TYPES},
     cpu::Cpu,
     cpuset::CpuSet,
-    zbus::client::{Client, SystemdClient, SystemdClientError},
     memory::Memory,
     pids::Pids,
+    zbus::client::{Client, SystemdClient, SystemdClientError},
 };
 use crate::{
     common::{
@@ -394,7 +394,7 @@ impl CgroupManager for Manager {
         }
 
         Unified::apply(controller_opt, systemd_version, &mut properties)?;
-        tracing::debug!("{:?}", properties);
+        tracing::debug!("properties {:?}", properties);
 
         if !properties.is_empty() {
             self.ensure_controllers_attached()?;
