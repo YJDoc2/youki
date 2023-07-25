@@ -105,7 +105,9 @@ impl RootFS {
                 bind_devices,
             )
         } else {
-            devicer.create_devices(rootfs, &default_devices(), bind_devices)
+            Ok(())
+            // FIXME
+            // devicer.create_devices(rootfs, &default_devices(), bind_devices)
         }?;
 
         symlinker.setup_ptmx(rootfs)?;

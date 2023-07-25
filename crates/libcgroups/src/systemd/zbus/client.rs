@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::num::ParseIntError;
 use std::path::PathBuf;
-use zbus::blocking::Connection;
+use zbus::blocking::{Connection, ConnectionBuilder};
 use zbus::zvariant::Value;
 
 #[derive(thiserror::Error, Debug)]
@@ -64,6 +64,16 @@ impl Client {
     /// Uses the session bus to communicate with systemd
     pub fn new_session() -> Result<Self, zbus::Error> {
         let conn = Connection::session()?;
+        Ok(Client {
+            conn,
+            system: false,
+        })
+    }
+
+    pub fn new_session_with_uid(uid: u32) -> Result<Self, zbus::Error> {
+        let conn = ConnectionBuilder::address("unix:path=/run/user/1000/bus")?
+            .auth_mechanisms(&[zbus::AuthMechanism::ExternalUid(uid as i32)])
+            .build()?;
         Ok(Client {
             conn,
             system: false,
@@ -196,13 +206,17 @@ impl SystemdClient for Client {
         unit_name: &str,
         properties: &HashMap<&str, Value>,
     ) -> Result<(), SystemdClientError> {
+        let props: Vec<(_, _)> = properties
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect();
         self.conn
             .call_method(
                 Some("org.freedesktop.systemd1"),
                 "/org/freedesktop/systemd1",
                 Some("org.freedesktop.systemd1.Manager"),
                 "SetUnitProperties",
-                &(unit_name.to_string(), true, properties.clone()),
+                &(unit_name.to_string(), true, props),
             )
             .map_err(|err| SystemdClientError::FailedProperties {
                 err,

@@ -412,10 +412,12 @@ pub fn container_init_process(
             InitProcessError::RootFS(err)
         })?;
 
-        reopen_dev_null().map_err(|err| {
-            tracing::error!(?err, "failed to reopen /dev/null");
-            err
-        })?;
+        // TODO FIXME
+        // this will probably be fixed by fixing the other fixme or mapping devices inside the containers
+        // reopen_dev_null().map_err(|err| {
+        //     tracing::error!(?err, "failed to reopen /dev/null");
+        //     err
+        // })?;
 
         if let Some(kernel_params) = linux.sysctl() {
             sysctl(kernel_params)?;
