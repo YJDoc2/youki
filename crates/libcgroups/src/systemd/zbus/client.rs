@@ -207,7 +207,7 @@ impl SystemdClient for Client {
             .map_err(|err| SystemdClientError::FailedProperties {
                 err,
                 unit_name: unit_name.into(),
-            });
+            })?;
 
         Ok(())
     }
