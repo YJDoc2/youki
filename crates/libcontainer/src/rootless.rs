@@ -142,14 +142,14 @@ pub struct Rootless {
 impl Rootless {
     pub fn new(spec: &Spec) -> Result<Option<Rootless>> {
         let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
-        let namespaces = Namespaces::try_from(linux.namespaces().as_ref())
-            .map_err(ValidateSpecError::Namespaces)?;
-        let user_namespace = namespaces
-            .get(LinuxNamespaceType::User)
-            .map_err(ValidateSpecError::Namespaces)?;
-        
+        // let namespaces = Namespaces::try_from(linux.namespaces().as_ref())
+        //     .map_err(ValidateSpecError::Namespaces)?;
+        // let user_namespace = namespaces
+        //     .get(LinuxNamespaceType::User)
+        //     .map_err(ValidateSpecError::Namespaces)?;
+
         // tracing::debug!("ns: {:?}",linux.namespaces());
-        
+
         // If conditions requires us to use rootless, we must either create a new
         // user namespace or enter an existing.
         // if rootless_required() && user_namespace.is_none() {
@@ -230,7 +230,6 @@ impl TryFrom<&Linux> for Rootless {
 
 /// Checks if rootless mode should be used
 pub fn rootless_required() -> bool {
-    
     if !nix::unistd::geteuid().is_root() {
         return true;
     }
@@ -238,7 +237,7 @@ pub fn rootless_required() -> bool {
     let uid_map_path = "/proc/self/uid_map";
     let content = fs::read_to_string(uid_map_path)
         .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
-    
+
     if !content.contains("4294967295") {
         return true;
     }
@@ -247,6 +246,7 @@ pub fn rootless_required() -> bool {
 }
 
 #[cfg(not(test))]
+#[allow(unused)]
 fn get_uid_path(pid: &Pid) -> PathBuf {
     PathBuf::from(format!("/proc/{pid}/uid_map"))
 }
@@ -254,10 +254,13 @@ fn get_uid_path(pid: &Pid) -> PathBuf {
 #[cfg(test)]
 pub fn get_uid_path(pid: &Pid) -> PathBuf {
     let temp = tempfile::tempdir().unwrap();
-    temp.path().join(format!("{pid}_mapping_path").as_str()).join("uid_map")
+    temp.path()
+        .join(format!("{pid}_mapping_path").as_str())
+        .join("uid_map")
 }
 
 #[cfg(not(test))]
+#[allow(unused)]
 fn get_gid_path(pid: &Pid) -> PathBuf {
     PathBuf::from(format!("/proc/{pid}/gid_map"))
 }
@@ -265,7 +268,9 @@ fn get_gid_path(pid: &Pid) -> PathBuf {
 #[cfg(test)]
 pub fn get_gid_path(pid: &Pid) -> PathBuf {
     let temp = tempfile::tempdir().unwrap();
-    temp.path().join(format!("{pid}_mapping_path").as_str()).join("gid_map")
+    temp.path()
+        .join(format!("{pid}_mapping_path").as_str())
+        .join("gid_map")
 }
 
 pub fn unprivileged_user_ns_enabled() -> Result<bool> {
@@ -290,11 +295,12 @@ pub fn unprivileged_user_ns_enabled() -> Result<bool> {
 
 /// Validates that the spec contains the required information for
 /// running in rootless mode
+#[allow(unused)]
 fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSpecError> {
     tracing::debug!(?spec, "validating spec for rootless container");
     let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
     let namespaces = Namespaces::try_from(linux.namespaces().as_ref())?;
-    tracing::debug!("ns: {:?}",linux.namespaces());
+    tracing::debug!("ns: {:?}", linux.namespaces());
     // TODO : check if we are already a new namespace, which would imply user  namespace creation is not required
     if namespaces.get(LinuxNamespaceType::User)?.is_none() {
         return Err(ValidateSpecError::NoUserNamespace);
@@ -355,6 +361,7 @@ fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSp
     Ok(())
 }
 
+#[allow(unused)]
 fn validate_mounts_for_rootless(
     mounts: &[Mount],
     uid_mappings: &[LinuxIdMapping],
@@ -401,6 +408,7 @@ fn validate_mounts_for_rootless(
     Ok(())
 }
 
+#[allow(unused)]
 fn is_id_mapped(id: u32, mappings: &[LinuxIdMapping]) -> bool {
     mappings
         .iter()

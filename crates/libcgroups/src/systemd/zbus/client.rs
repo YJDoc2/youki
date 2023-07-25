@@ -62,6 +62,7 @@ impl Client {
     }
 
     /// Uses the session bus to communicate with systemd
+    #[allow(unused)]
     pub fn new_session() -> Result<Self, zbus::Error> {
         let conn = Connection::session()?;
         Ok(Client {

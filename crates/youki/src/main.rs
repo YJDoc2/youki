@@ -87,7 +87,7 @@ fn main() -> Result<()> {
     //
     // Ref: https://github.com/opencontainers/runc/commit/0a8e4117e7f715d5fbeef398405813ce8e88558b
     // Ref: https://github.com/lxc/lxc/commit/6400238d08cdf1ca20d49bafb85f4e224348bf9d
-    // pentacle::ensure_sealed().context("failed to seal /proc/self/exe")?;
+    pentacle::ensure_sealed().context("failed to seal /proc/self/exe")?;
 
     let opts = Opts::parse();
     let mut app = Opts::command();

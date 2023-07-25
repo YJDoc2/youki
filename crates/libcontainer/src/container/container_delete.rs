@@ -6,6 +6,7 @@ use libcgroups::{self, common::CgroupManager};
 use nix::sys::signal;
 use std::num::ParseIntError;
 
+#[allow(unused)]
 fn get_owner_uid() -> Result<u32, ParseIntError> {
     let output = std::process::Command::new("busctl")
         .arg("--user")
