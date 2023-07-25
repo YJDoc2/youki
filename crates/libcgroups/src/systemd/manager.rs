@@ -6,18 +6,18 @@ use std::{
     path::Component::RootDir,
 };
 
-use dbus::arg::RefArg;
 use nix::{unistd::Pid, NixPath};
 use std::path::{Path, PathBuf};
+use zbus::zvariant::Value;
 
 use super::{
     controller::Controller,
     controller_type::{ControllerType, CONTROLLER_TYPES},
     cpu::Cpu,
     cpuset::CpuSet,
-    dbus::client::{Client, SystemdClient, SystemdClientError},
     memory::Memory,
     pids::Pids,
+    zbus::client::{Client, SystemdClient, SystemdClientError},
 };
 use crate::{
     common::{
@@ -147,7 +147,7 @@ pub enum SystemdManagerError {
     #[error("failed to destructure cgroups path: {0}")]
     CgroupsPath(#[from] CgroupsPathError),
     #[error("dbus error: {0}")]
-    DBus(#[from] dbus::Error),
+    DBus(#[from] zbus::Error),
     #[error("invalid slice name: {0}")]
     InvalidSliceName(String),
     #[error(transparent)]
@@ -368,7 +368,7 @@ impl CgroupManager for Manager {
     }
 
     fn apply(&self, controller_opt: &ControllerOpt) -> Result<(), Self::Error> {
-        let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut properties: HashMap<&str, Value> = HashMap::new();
         let systemd_version = self.client.systemd_version()?;
 
         for controller in CONTROLLER_TYPES {
@@ -393,7 +393,7 @@ impl CgroupManager for Manager {
         }
 
         Unified::apply(controller_opt, systemd_version, &mut properties)?;
-        tracing::debug!("{:?}", properties);
+        tracing::debug!("properties {:?}", properties);
 
         if !properties.is_empty() {
             self.ensure_controllers_attached()?;
@@ -431,7 +431,7 @@ impl CgroupManager for Manager {
 mod tests {
     use anyhow::{Context, Result};
 
-    use crate::systemd::dbus::client::SystemdClient;
+    use crate::systemd::zbus::client::SystemdClient;
 
     use super::*;
 
@@ -463,7 +463,7 @@ mod tests {
         fn set_unit_properties(
             &self,
             _unit_name: &str,
-            _properties: &HashMap<&str, Box<dyn RefArg>>,
+            _properties: &HashMap<&str, Value>,
         ) -> Result<(), SystemdClientError> {
             Ok(())
         }

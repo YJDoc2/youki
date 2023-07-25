@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use dbus::arg::RefArg;
 use oci_spec::runtime::LinuxMemory;
+use zbus::zvariant::Value;
 
 use crate::common::ControllerOpt;
 
@@ -31,7 +31,7 @@ impl Controller for Memory {
     fn apply(
         options: &ControllerOpt,
         _: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), Self::Error> {
         if let Some(memory) = options.resources.memory() {
             tracing::debug!("applying memory resource restrictions");
@@ -45,15 +45,15 @@ impl Controller for Memory {
 impl Memory {
     fn apply(
         memory: &LinuxMemory,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), SystemdMemoryError> {
         if let Some(reservation) = memory.reservation() {
             match reservation {
                 1..=i64::MAX => {
-                    properties.insert(MEMORY_LOW, Box::new(reservation as u64));
+                    properties.insert(MEMORY_LOW, Value::U64(reservation as u64));
                 }
                 -1 => {
-                    properties.insert(MEMORY_LOW, Box::new(u64::MAX));
+                    properties.insert(MEMORY_LOW, Value::U64(u64::MAX));
                 }
                 _ => return Err(SystemdMemoryError::ReservationValue(reservation)),
             }
@@ -62,10 +62,10 @@ impl Memory {
         if let Some(limit) = memory.limit() {
             match limit {
                 1..=i64::MAX => {
-                    properties.insert(MEMORY_MAX, Box::new(limit as u64));
+                    properties.insert(MEMORY_MAX, Value::U64(limit as u64));
                 }
                 -1 => {
-                    properties.insert(MEMORY_MAX, Box::new(u64::MAX));
+                    properties.insert(MEMORY_MAX, Value::U64(u64::MAX));
                 }
                 _ => return Err(SystemdMemoryError::MemoryLimit(limit)),
             }
@@ -83,13 +83,13 @@ impl Memory {
     fn apply_swap(
         swap: Option<i64>,
         limit: Option<i64>,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), SystemdMemoryError> {
-        let value: Box<dyn RefArg> = match (limit, swap) {
+        let value: Value = match (limit, swap) {
             // memory is unlimited and swap not specified -> assume swap unlimited
-            (Some(-1), None) => Box::new(u64::MAX),
+            (Some(-1), None) => Value::U64(u64::MAX),
             // if swap is unlimited it can be set to unlimited regardless of memory limit value
-            (_, Some(-1)) => Box::new(u64::MAX),
+            (_, Some(-1)) => Value::U64(u64::MAX),
             // if swap is zero, then it needs to be rejected regardless of memory limit value
             // as memory limit would be either bigger (invariant violation) or zero which would
             // leave the container with no memory and no swap.
@@ -103,7 +103,7 @@ impl Memory {
                 })
             }
 
-            (Some(l), Some(s)) if l < s => Box::new((s - l) as u64),
+            (Some(l), Some(s)) if l < s => Value::U64((s - l) as u64),
             _ => return Ok(()),
         };
 
@@ -115,8 +115,8 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use anyhow::{Context, Result};
-    use dbus::arg::ArgType;
     use oci_spec::runtime::LinuxMemoryBuilder;
+    use zbus::zvariant::Value;
 
     use super::*;
 
@@ -130,7 +130,7 @@ mod tests {
                 .reservation(reservation)
                 .build()
                 .context("build memory spec")?;
-            let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+            let mut properties: HashMap<&str, Value> = HashMap::new();
 
             // act
             Memory::apply(&memory, &mut properties).context("apply memory")?;
@@ -139,8 +139,7 @@ mod tests {
             assert_eq!(properties.len(), 1);
             assert!(properties.contains_key(MEMORY_LOW));
             let memory_low = &properties[MEMORY_LOW];
-            assert_eq!(memory_low.arg_type(), ArgType::UInt64);
-            assert_eq!(memory_low.as_u64().unwrap(), expected);
+            assert!(matches!(memory_low, Value::U64(x) if *x==expected));
         }
 
         Ok(())
@@ -156,7 +155,7 @@ mod tests {
                 .limit(reservation)
                 .build()
                 .context("build memory spec")?;
-            let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+            let mut properties: HashMap<&str, Value> = HashMap::new();
 
             // act
             Memory::apply(&memory, &mut properties).context("apply memory")?;
@@ -165,8 +164,7 @@ mod tests {
             assert_eq!(properties.len(), prop_count);
             assert!(properties.contains_key(MEMORY_MAX));
             let memory_low = &properties[MEMORY_MAX];
-            assert_eq!(memory_low.arg_type(), ArgType::UInt64);
-            assert_eq!(memory_low.as_u64().unwrap(), mem_low);
+            assert!(matches!(memory_low, Value::U64(x) if *x==mem_low));
         }
 
         Ok(())

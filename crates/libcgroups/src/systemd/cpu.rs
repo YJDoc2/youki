@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use dbus::arg::RefArg;
-use oci_spec::runtime::LinuxCpu;
-
 use super::controller::Controller;
 use crate::common::ControllerOpt;
+use oci_spec::runtime::LinuxCpu;
+use zbus::zvariant::Value;
 
 pub const CPU_WEIGHT: &str = "CPUWeight";
 pub const CPU_QUOTA: &str = "CPUQuotaPerSecUSec";
@@ -25,7 +24,7 @@ impl Controller for Cpu {
     fn apply(
         options: &ControllerOpt,
         _: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), Self::Error> {
         if let Some(cpu) = options.resources.cpu() {
             tracing::debug!("Applying cpu resource restrictions");
@@ -37,10 +36,7 @@ impl Controller for Cpu {
 }
 
 impl Cpu {
-    fn apply(
-        cpu: &LinuxCpu,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
-    ) -> Result<(), SystemdCpuError> {
+    fn apply(cpu: &LinuxCpu, properties: &mut HashMap<&str, Value>) -> Result<(), SystemdCpuError> {
         if Self::is_realtime_requested(cpu) {
             return Err(SystemdCpuError::RealtimeSystemd);
         }
@@ -48,7 +44,7 @@ impl Cpu {
         if let Some(mut shares) = cpu.shares() {
             shares = convert_shares_to_cgroup2(shares);
             if shares != 0 {
-                properties.insert(CPU_WEIGHT, Box::new(shares));
+                properties.insert(CPU_WEIGHT, Value::U64(shares));
             }
         }
 
@@ -63,7 +59,7 @@ impl Cpu {
                 quota = specified_quota as u64 * MICROSECS_PER_SEC / period;
             }
         }
-        properties.insert(CPU_QUOTA, Box::new(quota));
+        properties.insert(CPU_QUOTA, Value::U64(quota));
 
         let mut period: u64 = 100_000;
         if let Some(specified_period) = cpu.period() {
@@ -71,7 +67,7 @@ impl Cpu {
                 period = specified_period;
             }
         }
-        properties.insert(CPU_PERIOD, Box::new(period));
+        properties.insert(CPU_PERIOD, Value::U64(period));
 
         Ok(())
     }
@@ -92,8 +88,8 @@ pub fn convert_shares_to_cgroup2(shares: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use anyhow::{Context, Result};
-    use dbus::arg::ArgType;
     use oci_spec::runtime::LinuxCpuBuilder;
+    use zbus::zvariant::Value;
 
     use super::*;
 
@@ -104,7 +100,7 @@ mod tests {
             .shares(22000u64)
             .build()
             .context("build cpu spec")?;
-        let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+        let mut properties: HashMap<&str, Value> = HashMap::new();
 
         // act
         Cpu::apply(&cpu, &mut properties)?;
@@ -113,8 +109,7 @@ mod tests {
         assert!(properties.contains_key(CPU_WEIGHT));
 
         let cpu_weight = &properties[CPU_WEIGHT];
-        assert_eq!(cpu_weight.arg_type(), ArgType::UInt64);
-        assert_eq!(cpu_weight.as_u64().unwrap(), 840u64);
+        assert!(matches!(cpu_weight, Value::U64(840u64)));
 
         Ok(())
     }
@@ -126,7 +121,7 @@ mod tests {
         for quota in quotas {
             // arrange
             let cpu = LinuxCpuBuilder::default().quota(quota.0).build().unwrap();
-            let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+            let mut properties: HashMap<&str, Value> = HashMap::new();
 
             // act
             Cpu::apply(&cpu, &mut properties)?;
@@ -134,8 +129,8 @@ mod tests {
             // assert
             assert!(properties.contains_key(CPU_QUOTA));
             let cpu_quota = &properties[CPU_QUOTA];
-            assert_eq!(cpu_quota.arg_type(), ArgType::UInt64);
-            assert_eq!(cpu_quota.as_u64().unwrap(), quota.1);
+            let expected_quota = quota.1;
+            assert!(matches!(cpu_quota, Value::U64(x) if *x==expected_quota));
         }
 
         Ok(())
@@ -150,7 +145,7 @@ mod tests {
                 .period(period.0)
                 .build()
                 .context("build cpu spec")?;
-            let mut properties: HashMap<&str, Box<dyn RefArg>> = HashMap::new();
+            let mut properties: HashMap<&str, Value> = HashMap::new();
 
             // act
             Cpu::apply(&cpu, &mut properties)?;
@@ -158,8 +153,7 @@ mod tests {
             // assert
             assert!(properties.contains_key(CPU_PERIOD));
             let cpu_quota = &properties[CPU_PERIOD];
-            assert_eq!(cpu_quota.arg_type(), ArgType::UInt64);
-            assert_eq!(cpu_quota.as_u64().unwrap(), period.1);
+            assert!(matches!(cpu_quota, Value::U64(x) if *x==period.1));
         }
 
         Ok(())

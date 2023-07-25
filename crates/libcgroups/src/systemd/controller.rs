@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use dbus::arg::RefArg;
+use zbus::zvariant::Value;
 
 use crate::common::ControllerOpt;
 
@@ -10,6 +10,6 @@ pub(super) trait Controller {
     fn apply(
         options: &ControllerOpt,
         systemd_version: u32,
-        properties: &mut HashMap<&str, Box<dyn RefArg>>,
+        properties: &mut HashMap<&str, Value>,
     ) -> Result<(), Self::Error>;
 }
