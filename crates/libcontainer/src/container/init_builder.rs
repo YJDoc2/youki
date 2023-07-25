@@ -4,6 +4,7 @@ use rootless::Rootless;
 use std::{
     fs,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use crate::{
@@ -99,14 +100,14 @@ impl InitContainerBuilder {
             pid_file: self.base.pid_file,
             console_socket: csocketfd,
             use_systemd: self.use_systemd,
-            spec: &spec,
+            spec: Rc::new(spec),
             rootfs,
             rootless,
             notify_path,
             container: Some(container.clone()),
             preserve_fds: self.base.preserve_fds,
             detached: self.detached,
-            executor_manager: self.base.executor_manager,
+            executor: self.base.executor,
         };
 
         builder_impl.create()?;
@@ -170,6 +171,23 @@ impl InitContainerBuilder {
                     tracing::error!(?profile,
                         "apparmor profile exists in the spec, but apparmor is not activated on this system");
                     Err(ErrInvalidSpec::AppArmorNotEnabled)?;
+                }
+            }
+
+            if let Some(io_priority) = process.io_priority() {
+                let priority = io_priority.priority();
+                let iop_class_res = serde_json::to_string(&io_priority.class());
+                match iop_class_res {
+                    Ok(iop_class) => {
+                        if !(0..=7).contains(&priority) {
+                            tracing::error!(?priority, "io priority '{}' not between 0 and 7 (inclusive), class '{}' not in (IO_PRIO_CLASS_RT,IO_PRIO_CLASS_BE,IO_PRIO_CLASS_IDLE)",priority, iop_class);
+                            Err(ErrInvalidSpec::IoPriority)?;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(?priority, ?e, "failed to parse io priority class");
+                        Err(ErrInvalidSpec::IoPriority)?;
+                    }
                 }
             }
         }

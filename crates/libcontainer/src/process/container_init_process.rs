@@ -12,7 +12,7 @@ use nix::sched::CloneFlags;
 use nix::sys::stat::Mode;
 use nix::unistd::setsid;
 use nix::unistd::{self, Gid, Uid};
-use oci_spec::runtime::{LinuxNamespaceType, Spec, User};
+use oci_spec::runtime::{IOPriorityClass, LinuxIOPriority, LinuxNamespaceType, Spec, User};
 use std::collections::HashMap;
 use std::os::unix::io::AsRawFd;
 use std::{
@@ -69,7 +69,9 @@ pub enum InitProcessError {
     #[error(transparent)]
     NotifyListener(#[from] notify_socket::NotifyListenerError),
     #[error(transparent)]
-    Workload(#[from] workload::ExecutorManagerError),
+    Workload(#[from] workload::ExecutorError),
+    #[error("invalid io priority class: {0}")]
+    IoPriorityClass(String),
 }
 
 type Result<T> = std::result::Result<T, InitProcessError>;
@@ -333,19 +335,23 @@ pub fn container_init_process(
     init_receiver: &mut channel::InitReceiver,
 ) -> Result<()> {
     let syscall = args.syscall.create_syscall();
-    let spec = args.spec;
+    let spec = &args.spec;
     let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
     let proc = spec.process().as_ref().ok_or(MissingSpecError::Process)?;
     let mut envs: Vec<String> = proc.env().as_ref().unwrap_or(&vec![]).clone();
-    let rootfs_path = args.rootfs;
+    let rootfs_path = &args.rootfs;
     let hooks = spec.hooks().as_ref();
     let container = args.container.as_ref();
     let namespaces = Namespaces::try_from(linux.namespaces().as_ref())?;
+    let notify_listener = &args.notify_listener;
 
     setsid().map_err(|err| {
         tracing::error!(?err, "failed to setsid to create a session");
         InitProcessError::NixOther(err)
     })?;
+
+    set_io_priority(syscall.as_ref(), proc.io_priority())?;
+
     // set up tty if specified
     if let Some(csocketfd) = args.console_socket {
         tty::setup_console(&csocketfd).map_err(|err| {
@@ -486,7 +492,7 @@ pub fn container_init_process(
         }
     };
 
-    set_supplementary_gids(proc.user(), args.rootless, syscall.as_ref()).map_err(|err| {
+    set_supplementary_gids(proc.user(), &args.rootless, syscall.as_ref()).map_err(|err| {
         tracing::error!(?err, "failed to set supplementary gids");
         err
     })?;
@@ -652,13 +658,11 @@ pub fn container_init_process(
     })?;
 
     // listing on the notify socket for container start command
-    args.notify_socket
-        .wait_for_container_start()
-        .map_err(|err| {
-            tracing::error!(?err, "failed to wait for container start");
-            err
-        })?;
-    args.notify_socket.close().map_err(|err| {
+    notify_listener.wait_for_container_start().map_err(|err| {
+        tracing::error!(?err, "failed to wait for container start");
+        err
+    })?;
+    notify_listener.close().map_err(|err| {
         tracing::error!(?err, "failed to close notify socket");
         err
     })?;
@@ -675,7 +679,7 @@ pub fn container_init_process(
     }
 
     if proc.args().is_some() {
-        args.executor_manager.exec(spec).map_err(|err| {
+        (args.executor)(spec).map_err(|err| {
             tracing::error!(?err, "failed to execute payload");
             err
         })?;
@@ -757,6 +761,47 @@ fn set_supplementary_gids(
     Ok(())
 }
 
+/// set_io_priority set io priority
+fn set_io_priority(syscall: &dyn Syscall, io_priority_op: &Option<LinuxIOPriority>) -> Result<()> {
+    match io_priority_op {
+        Some(io_priority) => {
+            let io_prio_class_mapping: HashMap<_, _> = [
+                (IOPriorityClass::IoprioClassRt, 1i64),
+                (IOPriorityClass::IoprioClassBe, 2i64),
+                (IOPriorityClass::IoprioClassIdle, 3i64),
+            ]
+            .iter()
+            .filter_map(|(class, num)| match serde_json::to_string(&class) {
+                Ok(class_str) => Some((class_str, *num)),
+                Err(err) => {
+                    tracing::error!(?err, "failed to parse io priority class");
+                    None
+                }
+            })
+            .collect();
+
+            let iop_class = serde_json::to_string(&io_priority.class())
+                .map_err(|err| InitProcessError::IoPriorityClass(err.to_string()))?;
+
+            match io_prio_class_mapping.get(&iop_class) {
+                Some(value) => {
+                    syscall
+                        .set_io_priority(*value, io_priority.priority())
+                        .map_err(|err| {
+                            tracing::error!(?err, ?io_priority, "failed to set io_priority");
+                            InitProcessError::SyscallOther(err)
+                        })?;
+                }
+                None => {
+                    return Err(InitProcessError::IoPriorityClass(iop_class));
+                }
+            }
+        }
+        None => {}
+    }
+    Ok(())
+}
+
 #[cfg(feature = "libseccomp")]
 fn sync_seccomp(
     fd: Option<i32>,
@@ -789,7 +834,7 @@ mod tests {
     use super::*;
     use crate::syscall::{
         syscall::create_syscall,
-        test::{ArgName, MountArgs, TestHelperSyscall},
+        test::{ArgName, IoPriorityArgs, MountArgs, TestHelperSyscall},
     };
     use anyhow::Result;
     #[cfg(feature = "libseccomp")]
@@ -1078,5 +1123,24 @@ mod tests {
         assert!(is_executable(&executable_path).unwrap());
         assert!(!is_executable(&non_executable_path).unwrap());
         assert!(!is_executable(directory_path).unwrap());
+    }
+
+    #[test]
+    fn test_set_io_priority() {
+        let test_command = TestHelperSyscall::default();
+        let io_priority_op = None;
+        assert!(set_io_priority(&test_command, &io_priority_op).is_ok());
+
+        let data = "{\"class\":\"IOPRIO_CLASS_RT\",\"priority\":1}";
+        let iop: LinuxIOPriority = serde_json::from_str(data).unwrap();
+        let io_priority_op = Some(iop);
+        assert!(set_io_priority(&test_command, &io_priority_op).is_ok());
+
+        let want_io_priority = IoPriorityArgs {
+            class: 1,
+            priority: 1,
+        };
+        let set_io_prioritys = test_command.get_io_priority_args();
+        assert_eq!(set_io_prioritys[0], want_io_priority);
     }
 }

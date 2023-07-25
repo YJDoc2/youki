@@ -8,6 +8,7 @@ use oci_spec::runtime::{
 };
 use procfs::process::Namespace;
 
+use std::rc::Rc;
 use std::{
     collections::HashMap,
     convert::TryFrom,
@@ -19,7 +20,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::error::{LibcontainerError, MissingSpecError};
+use crate::error::{ErrInvalidSpec, LibcontainerError, MissingSpecError};
 use crate::process::args::ContainerType;
 use crate::{capabilities::CapabilityExt, container::builder_impl::ContainerBuilderImpl};
 use crate::{notify_socket::NotifySocket, rootless::Rootless, tty, utils};
@@ -132,14 +133,14 @@ impl TenantContainerBuilder {
             pid_file: self.base.pid_file,
             console_socket: csocketfd,
             use_systemd,
-            spec: &spec,
+            spec: Rc::new(spec),
             rootfs,
             rootless,
             notify_path: notify_path.clone(),
             container: None,
             preserve_fds: self.base.preserve_fds,
             detached: self.detached,
-            executor_manager: self.base.executor_manager,
+            executor: self.base.executor,
         };
 
         let pid = builder_impl.create()?;
@@ -188,8 +189,42 @@ impl TenantContainerBuilder {
             err
         })?;
 
+        Self::validate_spec(&spec)?;
+
         spec.canonicalize_rootfs(container.bundle())?;
         Ok(spec)
+    }
+
+    fn validate_spec(spec: &Spec) -> Result<(), LibcontainerError> {
+        let version = spec.version();
+        if !version.starts_with("1.") {
+            tracing::error!(
+                "runtime spec has incompatible version '{}'. Only 1.X.Y is supported",
+                spec.version()
+            );
+            Err(ErrInvalidSpec::UnsupportedVersion)?;
+        }
+
+        if let Some(process) = spec.process() {
+            if let Some(io_priority) = process.io_priority() {
+                let priority = io_priority.priority();
+                let iop_class_res = serde_json::to_string(&io_priority.class());
+                match iop_class_res {
+                    Ok(iop_class) => {
+                        if !(0..=7).contains(&priority) {
+                            tracing::error!(?priority, "io priority '{}' not between 0 and 7 (inclusive), class '{}' not in (IO_PRIO_CLASS_RT,IO_PRIO_CLASS_BE,IO_PRIO_CLASS_IDLE)",priority, iop_class);
+                            Err(ErrInvalidSpec::IoPriority)?;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(?priority, ?e, "failed to parse io priority class");
+                        Err(ErrInvalidSpec::IoPriority)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn load_container_state(&self, container_dir: PathBuf) -> Result<Container, LibcontainerError> {
