@@ -52,6 +52,7 @@ impl Device {
         I: IntoIterator<Item = &'a LinuxDevice>,
     {
         let old_mode = umask(Mode::from_bits_truncate(0o000));
+
         devices
             .into_iter()
             .map(|dev| {

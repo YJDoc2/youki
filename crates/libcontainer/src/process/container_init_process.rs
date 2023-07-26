@@ -328,6 +328,13 @@ fn reopen_dev_null() -> Result<()> {
     Ok(())
 }
 
+fn already_in_user_ns() -> bool {
+    let uid_map_path = "/proc/self/uid_map";
+    let content = std::fs::read_to_string(uid_map_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
+    !content.contains("4294967295")
+}
+
 // Some variables are unused in the case where libseccomp feature is not enabled.
 #[allow(unused_variables)]
 pub fn container_init_process(
@@ -377,7 +384,8 @@ pub fn container_init_process(
             })?;
         }
 
-        let bind_service = namespaces.get(LinuxNamespaceType::User)?.is_some();
+        let bind_service =
+            namespaces.get(LinuxNamespaceType::User)?.is_some() || already_in_user_ns();
         let rootfs = RootFS::new();
         rootfs
             .prepare_rootfs(
@@ -413,12 +421,10 @@ pub fn container_init_process(
             InitProcessError::RootFS(err)
         })?;
 
-        // TODO FIXME
-        // this will probably be fixed by fixing the other fixme or mapping devices inside the containers
-        // reopen_dev_null().map_err(|err| {
-        //     tracing::error!(?err, "failed to reopen /dev/null");
-        //     err
-        // })?;
+        reopen_dev_null().map_err(|err| {
+            tracing::error!(?err, "failed to reopen /dev/null");
+            err
+        })?;
 
         if let Some(kernel_params) = linux.sysctl() {
             sysctl(kernel_params)?;
