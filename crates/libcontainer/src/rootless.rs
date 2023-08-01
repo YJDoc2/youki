@@ -142,27 +142,27 @@ pub struct Rootless {
 impl Rootless {
     pub fn new(spec: &Spec) -> Result<Option<Rootless>> {
         let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
-        // let namespaces = Namespaces::try_from(linux.namespaces().as_ref())
-        //     .map_err(ValidateSpecError::Namespaces)?;
-        // let user_namespace = namespaces
-        //     .get(LinuxNamespaceType::User)
-        //     .map_err(ValidateSpecError::Namespaces)?;
+        let namespaces = Namespaces::try_from(linux.namespaces().as_ref())
+            .map_err(ValidateSpecError::Namespaces)?;
+        let user_namespace = namespaces
+            .get(LinuxNamespaceType::User)
+            .map_err(ValidateSpecError::Namespaces)?;
 
-        // tracing::debug!("ns: {:?}",linux.namespaces());
+        tracing::debug!("ns: {:?}", linux.namespaces());
 
         // If conditions requires us to use rootless, we must either create a new
         // user namespace or enter an existing.
-        // if rootless_required() && user_namespace.is_none() {
-        //     return Err(RootlessError::NoUserNamespace);
-        // }
+        if rootless_required() && user_namespace.is_none() && !in_user_namespace() {
+            return Err(RootlessError::NoUserNamespace);
+        }
 
-        if rootless_required() {
+        if user_namespace.is_some() && user_namespace.unwrap().path().is_none() {
             tracing::debug!("rootless container should be created");
 
-            // validate_spec_for_rootless(spec).map_err(|err| {
-            //     tracing::error!("failed to validate spec for rootless container: {}", err);
-            //     err
-            // })?;
+            validate_spec_for_rootless(spec).map_err(|err| {
+                tracing::error!("failed to validate spec for rootless container: {}", err);
+                err
+            })?;
             let mut rootless = Rootless::try_from(linux)?;
             if let Some((uid_binary, gid_binary)) = lookup_map_binaries(linux)? {
                 rootless.newuidmap = Some(uid_binary);
@@ -245,6 +245,13 @@ pub fn rootless_required() -> bool {
     matches!(std::env::var("YOUKI_USE_ROOTLESS").as_deref(), Ok("true"))
 }
 
+fn in_user_namespace() -> bool {
+    let uid_map_path = "/proc/self/uid_map";
+    let content = fs::read_to_string(uid_map_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
+    !content.contains("4294967295")
+}
+
 #[cfg(not(test))]
 #[allow(unused)]
 fn get_uid_path(pid: &Pid) -> PathBuf {
@@ -301,8 +308,11 @@ fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSp
     let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
     let namespaces = Namespaces::try_from(linux.namespaces().as_ref())?;
     tracing::debug!("ns: {:?}", linux.namespaces());
+
     // TODO : check if we are already a new namespace, which would imply user  namespace creation is not required
-    if namespaces.get(LinuxNamespaceType::User)?.is_none() {
+    let already_in_user_namespace = in_user_namespace();
+
+    if namespaces.get(LinuxNamespaceType::User)?.is_none() && !already_in_user_namespace {
         return Err(ValidateSpecError::NoUserNamespace);
     }
 

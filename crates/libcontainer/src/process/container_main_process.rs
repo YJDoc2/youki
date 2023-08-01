@@ -31,13 +31,6 @@ pub enum ProcessError {
 
 type Result<T> = std::result::Result<T, ProcessError>;
 
-fn already_in_user_ns() -> bool {
-    let uid_map_path = "/proc/self/uid_map";
-    let content = std::fs::read_to_string(uid_map_path)
-        .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
-    !content.contains("4294967295")
-}
-
 pub fn container_main_process(container_args: &ContainerArgs) -> Result<(Pid, bool)> {
     // We use a set of channels to communicate between parent and child process.
     // Each channel is uni-directional. Because we will pass these channel to
@@ -77,11 +70,11 @@ pub fn container_main_process(container_args: &ContainerArgs) -> Result<(Pid, bo
     // the main process to set up uid and gid mapping, once the intermediate
     // process enters into a new user namespace.
     if let Some(rootless) = &container_args.rootless {
-        if !already_in_user_ns() {
-            main_receiver.wait_for_mapping_request()?;
-            setup_mapping(rootless, intermediate_pid)?;
-            inter_sender.mapping_written()?;
-        }
+        // if !already_in_user_ns() {
+        main_receiver.wait_for_mapping_request()?;
+        setup_mapping(rootless, intermediate_pid)?;
+        inter_sender.mapping_written()?;
+        // }
     }
 
     // At this point, we don't need to send any message to intermediate process anymore,
