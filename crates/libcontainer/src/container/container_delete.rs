@@ -4,6 +4,7 @@ use crate::process::intel_rdt::delete_resctrl_subdirectory;
 use crate::{config::YoukiConfig, error::LibcontainerError};
 use libcgroups::{self, common::CgroupManager};
 use nix::sys::signal;
+use std::fs;
 use std::num::ParseIntError;
 
 #[allow(unused)]
@@ -128,12 +129,12 @@ impl Container {
             }
 
             // remove the directory storing container state
-            // tracing::debug!("remove dir {:?}", self.root);
+            tracing::debug!("remove dir {:?}", self.root);
             // TODO add check for rootless?
-            // let _ = fs::remove_dir_all(&self.root).map_err(|err| {
-            //     tracing::error!(?err, path = ?self.root, "failed to remove container dir");
-            //     LibcontainerError::OtherIO(err)
-            // });
+            fs::remove_dir_all(&self.root).map_err(|err| {
+                tracing::error!(?err, path = ?self.root, "failed to remove container dir");
+                LibcontainerError::OtherIO(err)
+            })?
         }
 
         Ok(())
