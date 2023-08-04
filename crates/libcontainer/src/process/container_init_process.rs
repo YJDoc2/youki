@@ -293,7 +293,6 @@ fn apply_rest_namespaces(
     Ok(())
 }
 
-#[allow(unused)]
 fn reopen_dev_null() -> Result<()> {
     // At this point we should be inside of the container and now
     // we can re-open /dev/null if it is in use to the /dev/null

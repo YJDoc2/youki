@@ -302,7 +302,6 @@ pub fn unprivileged_user_ns_enabled() -> Result<bool> {
 
 /// Validates that the spec contains the required information for
 /// running in rootless mode
-#[allow(unused)]
 fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSpecError> {
     tracing::debug!(?spec, "validating spec for rootless container");
     let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
@@ -371,7 +370,6 @@ fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSp
     Ok(())
 }
 
-#[allow(unused)]
 fn validate_mounts_for_rootless(
     mounts: &[Mount],
     uid_mappings: &[LinuxIdMapping],
@@ -418,7 +416,6 @@ fn validate_mounts_for_rootless(
     Ok(())
 }
 
-#[allow(unused)]
 fn is_id_mapped(id: u32, mappings: &[LinuxIdMapping]) -> bool {
     mappings
         .iter()
