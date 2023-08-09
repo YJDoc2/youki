@@ -126,8 +126,17 @@ impl Container {
         self.state.use_systemd
     }
 
+    pub fn is_rootless(&self) -> bool {
+        self.state.is_rootless
+    }
+
     pub fn set_systemd(&mut self, should_use: bool) -> &mut Self {
         self.state.use_systemd = should_use;
+        self
+    }
+
+    pub fn set_rootless(&mut self, is_rootless: bool) -> &mut Self {
+        self.state.is_rootless = is_rootless;
         self
     }
 

@@ -316,11 +316,12 @@ pub enum CreateCgroupSetupError {
     Systemd(#[from] systemd::manager::SystemdManagerError),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CgroupConfig {
     pub cgroup_path: PathBuf,
     pub systemd_cgroup: bool,
     pub container_name: String,
+    pub use_system_bus: bool,
 }
 
 pub fn create_cgroup_manager(
@@ -342,7 +343,12 @@ pub fn create_cgroup_manager(
             if cgroup_path.is_absolute() || !config.systemd_cgroup {
                 return Ok(create_v2_cgroup_manager(cgroup_path)?.any());
             }
-            Ok(create_systemd_cgroup_manager(cgroup_path, config.container_name.as_str())?.any())
+            Ok(create_systemd_cgroup_manager(
+                cgroup_path,
+                config.container_name.as_str(),
+                config.use_system_bus,
+            )?
+            .any())
         }
     }
 }
@@ -381,6 +387,7 @@ fn create_v2_cgroup_manager(
 fn create_systemd_cgroup_manager(
     cgroup_path: &Path,
     container_name: &str,
+    use_system_bus: bool,
 ) -> Result<systemd::manager::Manager, systemd::manager::SystemdManagerError> {
     if !systemd::booted() {
         panic!(
@@ -388,17 +395,15 @@ fn create_systemd_cgroup_manager(
         );
     }
 
-    let use_system = nix::unistd::geteuid().is_root();
-
     tracing::info!(
         "systemd cgroup manager with system bus {} will be used",
-        use_system
+        use_system_bus
     );
     systemd::manager::Manager::new(
         DEFAULT_CGROUP_ROOT.into(),
         cgroup_path.to_owned(),
         container_name.into(),
-        use_system,
+        use_system_bus,
     )
 }
 
@@ -406,6 +411,7 @@ fn create_systemd_cgroup_manager(
 fn create_systemd_cgroup_manager(
     _cgroup_path: &Path,
     _container_name: &str,
+    _use_system_bus: bool,
 ) -> Result<systemd::manager::Manager, systemd::manager::SystemdManagerError> {
     Err(systemd::manager::SystemdManagerError::NotEnabled)
 }

@@ -86,6 +86,7 @@ impl Container {
                             cgroup_path: config.cgroup_path.to_owned(),
                             systemd_cgroup: self.systemd(),
                             container_name: self.id().to_string(),
+                            use_system_bus: !self.is_rootless(),
                         },
                     )?;
                     cmanager.remove().map_err(|err| {

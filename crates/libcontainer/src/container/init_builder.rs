@@ -85,13 +85,16 @@ impl InitContainerBuilder {
         } else {
             None
         };
-
         let rootless = Rootless::new(&spec)?;
         let config = YoukiConfig::from_spec(&spec, container.id(), rootless.is_some())?;
         config.save(&container_dir).map_err(|err| {
             tracing::error!(?container_dir, "failed to save config: {}", err);
             err
         })?;
+
+        container.set_rootless(rootless.is_some());
+
+        container.save()?;
 
         let mut builder_impl = ContainerBuilderImpl {
             container_type: ContainerType::InitContainer,

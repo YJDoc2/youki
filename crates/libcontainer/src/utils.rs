@@ -143,6 +143,13 @@ pub fn get_user_home(uid: u32) -> Option<PathBuf> {
     }
 }
 
+pub fn is_in_new_userns() -> bool {
+    let uid_map_path = "/proc/self/uid_map";
+    let content = std::fs::read_to_string(uid_map_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", uid_map_path));
+    !content.contains("4294967295")
+}
+
 /// If None, it will generate a default path for cgroups.
 pub fn get_cgroup_path(
     cgroups_path: &Option<PathBuf>,

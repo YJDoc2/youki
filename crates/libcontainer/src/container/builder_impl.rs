@@ -77,6 +77,7 @@ impl ContainerBuilderImpl {
             cgroup_path: cgroups_path,
             systemd_cgroup: self.use_systemd || self.rootless.is_some(),
             container_name: self.container_id.to_owned(),
+            use_system_bus: self.rootless.is_none(),
         };
         let process = self
             .spec
@@ -191,6 +192,7 @@ impl ContainerBuilderImpl {
                 cgroup_path: cgroups_path,
                 systemd_cgroup: self.use_systemd || self.rootless.is_some(),
                 container_name: self.container_id.to_string(),
+                use_system_bus: self.rootless.is_none(),
             })?;
 
         let mut errors = Vec::new();

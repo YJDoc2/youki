@@ -6,6 +6,7 @@ use crate::{
         intel_rdt::setup_intel_rdt,
     },
     rootless::Rootless,
+    utils,
 };
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -91,9 +92,11 @@ pub fn container_main_process(container_args: &ContainerArgs) -> Result<(Pid, bo
     // the main process to set up uid and gid mapping, once the intermediate
     // process enters into a new user namespace.
     if let Some(rootless) = &container_args.rootless {
-        main_receiver.wait_for_mapping_request()?;
-        setup_mapping(rootless, intermediate_pid)?;
-        inter_sender.mapping_written()?;
+        if !utils::is_in_new_userns() {
+            main_receiver.wait_for_mapping_request()?;
+            setup_mapping(rootless, intermediate_pid)?;
+            inter_sender.mapping_written()?;
+        }
     }
 
     // At this point, we don't need to send any message to intermediate process anymore,

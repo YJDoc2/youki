@@ -121,6 +121,8 @@ pub struct State {
     pub use_systemd: bool,
     // Specifies if the Intel RDT subdirectory needs be cleaned up.
     pub clean_up_intel_rdt_subdirectory: Option<bool>,
+    // specifies if the container was rootless or not
+    pub is_rootless: bool,
 }
 
 impl State {
@@ -143,6 +145,7 @@ impl State {
             creator: None,
             use_systemd: false,
             clean_up_intel_rdt_subdirectory: None,
+            is_rootless: false,
         }
     }
 

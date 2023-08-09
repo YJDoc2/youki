@@ -1,7 +1,10 @@
 use crate::error::MissingSpecError;
 use crate::namespaces::{NamespaceError, Namespaces};
+use crate::utils;
 use nix::unistd::Pid;
-use oci_spec::runtime::{Linux, LinuxIdMapping, LinuxNamespace, LinuxNamespaceType, Mount, Spec};
+use oci_spec::runtime::{
+    Linux, LinuxIdMapping, LinuxIdMappingBuilder, LinuxNamespace, LinuxNamespaceType, Mount, Spec,
+};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -150,11 +153,13 @@ impl Rootless {
 
         // If conditions requires us to use rootless, we must either create a new
         // user namespace or enter an existing.
-        if rootless_required() && user_namespace.is_none() {
+        if rootless_required() && user_namespace.is_none() && !utils::is_in_new_userns() {
             return Err(RootlessError::NoUserNamespace);
         }
 
-        if user_namespace.is_some() && user_namespace.unwrap().path().is_none() {
+        if (user_namespace.is_some() && user_namespace.unwrap().path().is_none())
+            || utils::is_in_new_userns()
+        {
             tracing::debug!("rootless container should be created");
 
             validate_spec_for_rootless(spec).map_err(|err| {
@@ -220,7 +225,7 @@ impl TryFrom<&Linux> for Rootless {
             uid_mappings: linux.uid_mappings().to_owned(),
             gid_mappings: linux.gid_mappings().to_owned(),
             user_namespace: user_namespace.cloned(),
-            privileged: nix::unistd::geteuid().is_root(),
+            privileged: !rootless_required(),
             rootless_id_mapper: RootlessIDMapper::new(),
         })
     }
@@ -229,6 +234,10 @@ impl TryFrom<&Linux> for Rootless {
 /// Checks if rootless mode should be used
 pub fn rootless_required() -> bool {
     if !nix::unistd::geteuid().is_root() {
+        return true;
+    }
+
+    if utils::is_in_new_userns() {
         return true;
     }
 
@@ -255,24 +264,66 @@ pub fn unprivileged_user_ns_enabled() -> Result<bool> {
     }
 }
 
+fn parse_mapping_entry(entry: &str) -> (u32, u32, u32) {
+    let components: Vec<_> = entry.split_ascii_whitespace().collect();
+    if components.len() != 3 {
+        panic!("invalid mapping entry {}", entry);
+    }
+    (
+        components[0].parse().unwrap(),
+        components[1].parse().unwrap(),
+        components[2].parse().unwrap(),
+    )
+}
+
+fn get_id_mapping(path: &str) -> Result<Vec<LinuxIdMapping>> {
+    let uid_map_str = std::fs::read_to_string(path)
+        .unwrap_or_else(|_| panic!("failed to read {path} for rootless container mapping entries"));
+    let mut entries = Vec::new();
+    for entry in uid_map_str.lines() {
+        let (container, host, size) = parse_mapping_entry(entry);
+        entries.push(
+            LinuxIdMappingBuilder::default()
+                .container_id(container)
+                .host_id(host)
+                .size(size)
+                .build()
+                .unwrap(),
+        );
+    }
+    Ok(entries)
+}
+
 /// Validates that the spec contains the required information for
 /// running in rootless mode
 fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSpecError> {
     tracing::debug!(?spec, "validating spec for rootless container");
     let linux = spec.linux().as_ref().ok_or(MissingSpecError::Linux)?;
     let namespaces = Namespaces::try_from(linux.namespaces().as_ref())?;
-    if namespaces.get(LinuxNamespaceType::User)?.is_none() {
+    if namespaces.get(LinuxNamespaceType::User)?.is_none() && !utils::is_in_new_userns() {
         return Err(ValidateSpecError::NoUserNamespace);
     }
 
-    let gid_mappings = linux
-        .gid_mappings()
-        .as_ref()
-        .ok_or(ValidateSpecError::NoGIDMapping)?;
-    let uid_mappings = linux
-        .uid_mappings()
-        .as_ref()
-        .ok_or(ValidateSpecError::NoUIDMappings)?;
+    let (uid_mappings, gid_mappings) = if !utils::is_in_new_userns() {
+        // if we are not already in a user namespace, then the mappings must be present
+        (
+            linux
+                .uid_mappings()
+                .as_ref()
+                .ok_or(ValidateSpecError::NoUIDMappings)?
+                .to_owned(),
+            linux
+                .gid_mappings()
+                .as_ref()
+                .ok_or(ValidateSpecError::NoGIDMapping)?
+                .to_owned(),
+        )
+    } else {
+        (
+            get_id_mapping("/proc/self/uid_map").unwrap(),
+            get_id_mapping("/proc/self/gid_map").unwrap(),
+        )
+    };
 
     if uid_mappings.is_empty() {
         return Err(ValidateSpecError::NoUIDMappings);
@@ -285,8 +336,8 @@ fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSp
         spec.mounts()
             .as_ref()
             .ok_or(ValidateSpecError::NoMountSpec)?,
-        uid_mappings,
-        gid_mappings,
+        &uid_mappings,
+        &gid_mappings,
     )?;
 
     if let Some(additional_gids) = spec
@@ -294,12 +345,12 @@ fn validate_spec_for_rootless(spec: &Spec) -> std::result::Result<(), ValidateSp
         .as_ref()
         .and_then(|process| process.user().additional_gids().as_ref())
     {
-        let privileged = nix::unistd::geteuid().is_root();
+        let privileged = !rootless_required();
 
         match (privileged, additional_gids.is_empty()) {
             (true, false) => {
                 for gid in additional_gids {
-                    if !is_id_mapped(*gid, gid_mappings) {
+                    if !is_id_mapped(*gid, &gid_mappings) {
                         tracing::error!(?gid,"gid is specified as supplementary group, but is not mapped in the user namespace");
                         return Err(ValidateSpecError::GidNotMapped(*gid));
                     }
