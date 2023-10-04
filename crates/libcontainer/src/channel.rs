@@ -219,5 +219,5 @@ fn unix_channel() -> Result<(RawFd, RawFd), ChannelError> {
     let f1 = std::mem::ManuallyDrop::new(f1);
     let f2 = std::mem::ManuallyDrop::new(f2);
 
-    return Ok((f1.as_raw_fd(), f2.as_raw_fd()));
+    Ok((f1.as_raw_fd(), f2.as_raw_fd()))
 }

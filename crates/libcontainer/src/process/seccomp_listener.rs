@@ -5,7 +5,7 @@ use nix::{
     unistd,
 };
 use oci_spec::runtime;
-use std::{io::IoSlice, path::Path, os::fd::AsRawFd};
+use std::{io::IoSlice, os::fd::AsRawFd, path::Path};
 
 use super::channel;
 
@@ -91,12 +91,17 @@ fn sync_seccomp_send_msg(listener_path: &Path, msg: &[u8], fd: i32) -> Result<()
     let iov = [IoSlice::new(msg)];
     let fds = [fd];
     let cmsgs = socket::ControlMessage::ScmRights(&fds);
-    socket::sendmsg::<UnixAddr>(socket.as_raw_fd(), &iov, &[cmsgs], socket::MsgFlags::empty(), None).map_err(
-        |err| {
-            tracing::error!(?err, "failed to write container state to seccomp listener");
-            SeccompListenerError::UnixOther(err)
-        },
-    )?;
+    socket::sendmsg::<UnixAddr>(
+        socket.as_raw_fd(),
+        &iov,
+        &[cmsgs],
+        socket::MsgFlags::empty(),
+        None,
+    )
+    .map_err(|err| {
+        tracing::error!(?err, "failed to write container state to seccomp listener");
+        SeccompListenerError::UnixOther(err)
+    })?;
     // The spec requires the listener socket to be closed immediately after sending.
     let _ = unistd::close(socket.as_raw_fd());
 
