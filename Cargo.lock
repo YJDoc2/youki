@@ -1758,7 +1758,7 @@ dependencies = [
  "flate2",
  "libcgroups",
  "libcontainer",
- "nix 0.26.2",
+ "nix 0.27.1",
  "num_cpus",
  "oci-spec",
  "once_cell",
@@ -3149,7 +3149,7 @@ name = "runtimetest"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "nix 0.26.2",
+ "nix 0.27.1",
  "oci-spec",
 ]
 
