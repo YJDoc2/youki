@@ -1,4 +1,4 @@
-use std::{ffi::c_int, num::NonZeroUsize};
+use std::{ffi::c_int, fs::File, num::NonZeroUsize};
 
 use libc::SIGCHLD;
 use nix::{
@@ -164,12 +164,12 @@ fn clone(cb: CloneCb, flags: u64, exit_signal: Option<u64>) -> Result<Pid, Clone
     // do not use MAP_GROWSDOWN since it is not well supported.
     // Ref: https://man7.org/linux/man-pages/man2/mmap.2.html
     let child_stack = unsafe {
-        mman::mmap(
+        mman::mmap::<File>(
             None,
             NonZeroUsize::new(default_stack_size).ok_or(CloneError::ZeroStackSize)?,
             mman::ProtFlags::PROT_READ | mman::ProtFlags::PROT_WRITE,
             mman::MapFlags::MAP_PRIVATE | mman::MapFlags::MAP_ANONYMOUS | mman::MapFlags::MAP_STACK,
-            -1,
+            None,
             0,
         )
         .map_err(CloneError::StackAllocation)?
