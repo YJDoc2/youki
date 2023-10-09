@@ -240,7 +240,6 @@ youki is named after the Japanese word 'youki', which means 'a container'. In Ja
 <pre><code class="language-console">$ sudo apt-get install    \
       pkg-config          \
       libsystemd-dev      \
-      libdbus-glib-1-dev  \
       build-essential     \
       libelf-dev          \
       libseccomp-dev      \
@@ -251,7 +250,6 @@ youki is named after the Japanese word 'youki', which means 'a container'. In Ja
 <pre><code class="language-console">$ sudo dnf install          \
       pkg-config            \
       systemd-devel         \
-      dbus-devel            \
       elfutils-libelf-devel \
       libseccomp-devel      \
       clang-devel           \
@@ -522,6 +520,9 @@ log level to <code>debug</code>. This flag is ignored if <code>--log-level</code
 </li>
 <li>
 <p>module <code>manager</code>, which contains <code>Manager</code> struct, which is the cgroup manager, and contain information such as the root cgroups path, path for the specific cgroups, client to communicate with systemd etc. This also implements <code>CgroupManager</code> trait, and thus can be used for cgroups related operations.</p>
+</li>
+<li>
+<p>module <code>dbus-native</code> is the native implementation for dbus connection, which is used to interact with systemd in rootless mode.</p>
 </li>
 </ul>
 <h3 id="test_manager"><a class="header" href="#test_manager">test_manager</a></h3>
@@ -911,6 +912,18 @@ TIME                 COMMAND PID      EVENT     CONTENT
 </li>
 </ul>
 <p>As youki currently depends on systemd as an init system, this crate also exposes module systemd, which provides interface for working with systemd related operations. <a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html">systemd resource control</a> is a good place to read more about systemd and its involvement in resource control.</p>
+<h2 id="dbus-native"><a class="header" href="#dbus-native">Dbus Native</a></h2>
+<p>This module is the native implementation of dbus connection functionality used for connecting with systemd via dbus. Refer to <a href="https://github.com/containers/youki/issues/2208">this issue discussion</a> following for the discussion regarding moving away from existing dbus-interfacing library.</p>
+<p>Note that this implements the minimal required functionality for youki to use dbus, and thus does not have all the dbus features.</p>
+<ul>
+<li>
+<p>Refer to see <a href="https://dbus.freedesktop.org/doc/dbus-specification.html">dbus specification</a> and <a href="https://dbus.freedesktop.org/doc/api/html/structDBusHeader.html">header format</a> for the individual specifications.</p>
+</li>
+<li>
+<p>For systemd interface and types, you can generate the following file and take help from the auto-generated functions
+<code>dbus-codegen-rust -s -g -m None -d org.freedesktop.systemd1 -p /org/freedesktop/systemd1</code>, see https://github.com/diwic/dbus-rs</p>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="libcontainer-1"><a class="header" href="#libcontainer-1">libcontainer</a></h1>
 <p>This crate is one of the core crates of the youki workspace, and has functions and structs that deal with the actual craetion and management of the container processes.</p>
 <p>Remember, in the end, a container is just another process in Linux, which has control groups, namespaces, pivot_root and other mechanisms applied to it. The program executing has the impression that is is running on a complete system, but from the host system's perspective, it is just another process, and has attributes such as pid, file descriptors, etc. associated with it like any other process.</p>
