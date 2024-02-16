@@ -330,9 +330,12 @@ impl TenantContainerBuilder {
         let linux = spec.linux().as_ref().unwrap();
         let init_process = procfs::process::Process::new(container.pid().unwrap().as_raw())?;
         let ns = self.get_namespaces(init_process.namespaces()?.0)?;
-        let linux = if linux.cgroups_path().is_some(){
-            LinuxBuilder::default().namespaces(ns).cgroups_path(linux.cgroups_path().as_ref().unwrap().clone()).build()?
-        }else{
+        let linux = if linux.cgroups_path().is_some() {
+            LinuxBuilder::default()
+                .namespaces(ns)
+                .cgroups_path(linux.cgroups_path().as_ref().unwrap().clone())
+                .build()?
+        } else {
             LinuxBuilder::default().namespaces(ns).build()?
         };
         spec.set_process(Some(process)).set_linux(Some(linux));
