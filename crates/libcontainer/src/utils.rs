@@ -154,10 +154,7 @@ pub fn get_cgroup_path(
 ) -> PathBuf {
     match cgroups_path {
         Some(cpath) => cpath.clone(),
-        None => match new_user_ns {
-            false => PathBuf::from(container_id),
-            true => PathBuf::from(format!(":youki:{container_id}")),
-        },
+        None => PathBuf::from(format!(":youki:{container_id}"))
     }
 }
 
