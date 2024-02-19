@@ -150,11 +150,11 @@ pub fn get_user_home(uid: u32) -> Option<PathBuf> {
 pub fn get_cgroup_path(
     cgroups_path: &Option<PathBuf>,
     container_id: &str,
-    new_user_ns: bool,
+    _new_user_ns: bool,
 ) -> PathBuf {
     match cgroups_path {
         Some(cpath) => cpath.clone(),
-        None => PathBuf::from(format!(":youki:{container_id}"))
+        None => PathBuf::from(format!(":youki:{container_id}")),
     }
 }
 
