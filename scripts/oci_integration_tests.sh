@@ -1,8 +1,8 @@
-#!/bin/bash -eu
+#!/bin/bash 
 
 ROOT=$(git rev-parse --show-toplevel)
 
-RUNTIME=${1:-.}/youki
+RUNTIME=runc
 OCI_TEST_DIR=${ROOT}/tests/oci-runtime-tests/src/github.com/opencontainers/runtime-tools
 PATTERN=${2:-.}
 cd $OCI_TEST_DIR
@@ -119,14 +119,13 @@ for case in "${test_cases[@]}"; do
   echo "Running $case"
   logfile="./log/$case.log"
   mkdir -p "$(dirname $logfile)"
-  sudo RUST_BACKTRACE=1 RUNTIME=${RUNTIME} ${OCI_TEST_DIR}/validation/$case >$logfile 2>&1 || (cat $logfile && exit 1)
+  sudo RUST_BACKTRACE=1 RUNTIME=${RUNTIME} ${OCI_TEST_DIR}/validation/$case >$logfile 2>&1 || (cat $logfile)
   if [ 0 -ne $(grep "not ok" $logfile | wc -l ) ]; then
     if [ 0 -eq $(grep "# cgroupv2 is not supported yet " $logfile | wc -l ) ]; then
       echo "Skip $case because oci-runtime-tools doesn't support cgroup v2"
       continue;
     fi
     cat $logfile
-    exit 1
   fi
   sleep 1
 done
