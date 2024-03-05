@@ -17,30 +17,19 @@ jobs:
       
       - name: Install skopeo and podman requirements
         run: |
-          sudo apt-get install -y pkg-config libsystemd-dev libelf-dev libseccomp-dev libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev bats socat protobuf-compiler jq conmon
-          cargo install netavark aardvark-dns
-      
-      - name: Copy binaries
-        run: |
-          sudo mkdir -p /usr/local/lib/podman
-          sudo cp $(which netavark) /usr/local/lib/podman && sudo cp $(which netavark)-dhcp-proxy-client /usr/local/lib/podman && sudo cp $(which aardvark-dns) /usr/local/lib/podman
+          sudo apt-get install -y pkg-config libsystemd-dev libelf-dev libseccomp-dev libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev bats socat protobuf-compiler jq conmon containernetworking-plugins netcat apache2-utils wget
+          wget http://ftp.debian.org/debian/pool/main/n/netavark/netavark_1.4.0-3_amd64.deb
+          wget http://ftp.debian.org/debian/pool/main/a/aardvark-dns/aardvark-dns_1.4.0-3_amd64.deb
+          wget http://ftp.debian.org/debian/pool/main/g/golang-github-containers-common/golang-github-containers-common_0.57.4+ds1-4_all.deb
+          wget http://ftp.debian.org/debian/pool/main/s/skopeo/skopeo_1.13.3+ds1-2_amd64.deb
+          sudo apt install ./netavark_1.4.0-3_amd64.deb ./aardvark-dns_1.4.0-3_amd64.deb ./golang-github-containers-common_0.57.4+ds1-4_all.deb ./skopeo_1.13.3+ds1-2_amd64.deb
+          sudo npm install -g bats
       
       # setup go
       - uses: actions/setup-go@v5
         with:
           go-version: '1.20'
           cache: false
-      
-      # build skopeo
-      # These build steps are taken from https://github.com/containers/skopeo/issues/1648#issuecomment-1132161659
-      - name: Download skopeo 1.13.1 source # because ubuntu 22.04 does not have latest, and podman tests depend on that
-        run: mkdir /tmp/skopeo && curl -fsSL "https://github.com/containers/skopeo/archive/v1.13.1.tar.gz" | tar -xzf - -C /tmp/skopeo --strip-components=1
-      - name: Build skopeo
-        run: cd /tmp/skopeo && DISABLE_DOCS=1 make
-      - name: copy skopeo binaries
-        run: sudo cp /tmp/skopeo/bin/skopeo /usr/local/bin/skopeo && sudo cp /tmp/skopeo/default-policy.json /etc/containers/policy.json
-      - name: Skopeo version
-        run: skopeo --version
 
       # build youki
       - run: just youki-release
@@ -58,7 +47,12 @@ jobs:
       
       # run tests
       - name: Run podman test
-        run: BATS_TEST_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} podman_bats.XXXXXX) && PODMAN_TMPDIR=$BATS_TEST_TMPDIR && OCI_RUNTIME=/usr/local/bin/youki sudo make localsystem 2>&1 | tee build.log 
+        run: |
+          export BATS_TEST_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} podman_bats.XXXXXX)
+          export PODMAN_TMPDIR=$BATS_TEST_TMPDIR 
+          export OCI_RUNTIME=/usr/local/bin/youki 
+          sudo make localsystem 2>&1 | tee build.log 
+
       - name: Adding Summary
         run: |
           echo "Total tests: 600+ Failed tests: $(cat build.log | grep " ok " | wc -l)" >> $GITHUB_STEP_SUMMARY
