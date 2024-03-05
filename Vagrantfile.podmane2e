@@ -6,36 +6,26 @@ PODMAN_BRANCH = "main"
 SKOPEO_VERSION = "1.13.1"
 
 Vagrant.configure("2") do |config|
-    config.vm.box = "generic/ubuntu2204"
-    config.vm.synced_folder '.', '/vagrant/youki', disabled: false
+    config.vm.box = "fedora/38-cloud-base"
+    config.ssh.username = 'vagrant'
+    config.ssh.password = 'vagrant'
+    config.vm.synced_folder '.', '/youki', disabled: false
 
     config.vm.provider "virtualbox" do |v|
       v.memory = 8192
-      v.cpus = 8
+      v.cpus = 4
     end
 
     config.vm.provision "bootstrap", type: "shell" do |s|
       s.inline = <<-SHELL
         set -e -u -o pipefail
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update && apt-get install -y \
-          make \
-          pkg-config         \
-          libsystemd-dev     \
-          libdbus-glib-1-dev \
-          build-essential    \
-          libelf-dev \
-          libseccomp-dev \
-          libbtrfs-dev \
-          btrfs-progs \
-          libgpgme-dev \
-          libassuan-dev \
-          libdevmapper-dev \
-          bats \
-          socat \
-          jq \
-          conmon \
-          protobuf-compiler
+        dnf -y install \
+          make pkg-config systemd-devel elfutils-libelf-devel libseccomp-devel openssl-devel dbus-glib-devel \
+          bats socat jq conmon protobuf-compiler netavark aardvark-dns \
+          tar skopeo git gcc wget slirp4netns catatonit openssl \
+          conmon containers-common-extra iptables gnupg\
+          nftables gpgme-devel
 
         wget --quiet https://go.dev/dl/go#{GO_VERSION}.linux-amd64.tar.gz -O /tmp/go#{GO_VERSION}.linux-amd64.tar.gz
         rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go#{GO_VERSION}.linux-amd64.tar.gz
@@ -44,26 +34,41 @@ Vagrant.configure("2") do |config|
         export PATH=$PATH:$HOME/.cargo/bin:/usr/local/go/bin
         export GOPATH=$HOME/go
 
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-        cargo install netavark aardvark-dns
-        mkdir -p /usr/local/lib/podman
-        sudo cp $(which netavark) /usr/local/lib/podman/
-        sudo cp $(which netavark)-dhcp-proxy-client /usr/local/lib/podman/
-        sudo cp $(which aardvark-dns) /usr/local/lib/podman/
+        skopeo --version
+      SHELL
+    end
+    
+    config.vm.provision "test", type: "shell", run: "never" do |s|
+      s.inline = <<-SHELL
+        sudo su
+        set -e -u -o pipefail
+        export DEBIAN_FRONTEND=noninteractive
 
-        mkdir /tmp/skopeo 
-        curl -fsSL "https://github.com/containers/skopeo/archive/v#{SKOPEO_VERSION}.tar.gz" | tar -xzf - -C /tmp/skopeo --strip-components=1
-        cd /tmp/skopeo && DISABLE_DOCS=1 make
-        sudo mkdir /etc/containers && sudo cp /tmp/skopeo/bin/skopeo /usr/local/bin/skopeo && sudo cp /tmp/skopeo/default-policy.json /etc/containers/policy.json
-
-        git clone https://github.com/containers/podman /vagrant/podman -b #{PODMAN_BRANCH}
+        rm -rf /vagrant/podman
+        git config --global core.compression 0
+        git clone https://github.com/containers/podman /vagrant/podman -b #{PODMAN_BRANCH} --depth 1
         
         cd /vagrant/podman && make binaries install.tools
 
         rm -rf /bin/runc /sbin/runc /usr/sbin/runc /usr/bin/runc
 
-        cp /vagrant/youki/youki /usr/bin/runc
-      SHELL
+        cp /youki/youki /usr/bin/runc
+        
+        sudo echo "export PATH=$PATH:/usr/local/go/bin" >> ~/.bashrc
+        sudo echo "export GOPATH=$HOME/go" >> ~/.bashrc
+        export PATH=$PATH:$HOME/.cargo/bin:/usr/local/go/bin
+        export GOPATH=$HOME/go
+       
+        cat /etc/resolv.conf | sed 's/nameserver .*$/nameserver 8.8.8.8/' > /tmp/resolve.conf
+        cp /tmp/resolve.conf /etc/resolve.conf
+
+        export BATS_TEST_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} podman_bats.XXXXXX)
+        export PODMAN_TMPDIR=$BATS_TEST_TMPDIR 
+        export OCI_RUNTIME=$(which runc)
+
+        make localsystem
+     SHELL
     end
+
 end
+
