@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.3.2](https://github.com/YJDoc2/youki/commits/v0.3.2) - 2024-04-27
+
 ## [v0.3.2](https://github.com/containers/youki/compare/v0.3.1...v0.3.2) - 2024-01-31
 ### 💪 Improvements
 - (feat) add support for `musl` using `cross-rs` by @jprendes in https://github.com/containers/youki/pull/2536
