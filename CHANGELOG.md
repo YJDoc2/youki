@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.0.1](https://github.com/YJDoc2/youki/commits/v0.0.1) - 2025-04-21
+
 ## [v0.5.3](https://github.com/youki-dev/youki/compare/v0.5.2...v0.5.3) - 2025-03-21
 ### 🐛 Bug Fixes
 - Security: Fix compromised `tj-actions/changed-files` action by @sou1118 in https://github.com/youki-dev/youki/pull/3112
